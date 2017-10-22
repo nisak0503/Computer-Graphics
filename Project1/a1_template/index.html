@@ -1,0 +1,309 @@
+<!-- Graphics Example Code.  index.html - The web page document containing the canvas (drawing surface), that launches your javascript files.  By Garett //-->
+<!DOCTYPE html> <html> <head> <meta charset="UTF-8"/> <link rel="icon" href="assets/fav.ico">
+<script type="text/javascript" src="tinywebgl-ucla.js" ></script>  <!--  Javascript "include" files.  Any code in them gets executed as part of the page loading. //-->
+<script type="text/javascript" src="dependencies.js"   ></script>
+<script type="text/javascript"> "use strict"    
+  window.onload = function init()        // ********************* THE ENTRY POINT OF THE WHOLE PROGRAM STARTS HERE ********************* 
+    { window.contexts = {};                                                            // A global variable, "contexts".  Browsers support up to 16 WebGL contexts per page.
+      document.getElementById( "canvases" ).appendChild( Object.assign( document.createElement( "canvas" ), { id: "main_canvas", width: 800, height: 600 } ) );
+
+      const scenes  = [ "Butterfly_Scene", "Movement_Controls", "Global_Info_Table"]; // Register some scenes to the "Canvas_Manager" object -- which WebGL calls
+                                                                                       // upon every time a draw / keyboard / mouse event happens.  
+                                                                                           
+      Code_Manager.display_code( eval( scenes[0] ) );                                  // Display the code for our demo on the page, starting with the first scene in the list.
+      for( let list of [ core_dependencies, all_dependencies ] )
+      document.querySelector( "#class_list" ).rows[2].appendChild( Object.assign( document.createElement( "td" ), { 
+        innerHTML: list.reduce( (acc, x) => acc += "<a href='javascript:void(0);' onclick='Code_Manager.display_code(" + x + ")'>" + x + "</a><br>", "" ) } ) );        
+      document.getElementsByName( "main_demo_link" )[0].innerHTML = "<a href='javascript:void(0);' onclick='Code_Manager.display_code(" + scenes[0] + ")'>" + scenes[0] + "</a><br>";
+      document.querySelector("#code_display").innerHTML = "Below is the code for the demo that's running:<br>&nbsp;<br>" + document.querySelector("#code_display").innerHTML;
+      
+      contexts[ "main_canvas" ] = new Canvas_Manager( "main_canvas", Color.of( 0,0,0,1 ), scenes );   // Manage the WebGL canvas.  Second parameter sets background color.
+      for( let c in contexts ) contexts[ c ].render();     // Call render() for each WebGL context on this page.  Then render() will re-queue itself for more calls.
+    }
+
+
+
+class Butterfly_Scene extends Scene_Component  // Code your butterfly assignment below.  It is an example of drawing a hierarchical object using a "model_transform" matrix.
+{ constructor( context )
+    { super( context );
+      var shapes = { "box" :   new Cube(),                            // Load one of each of these shape definitions onto the GPU.  Once each Shape is there we 
+                     "ball":   new Subdivision_Sphere( 4 )          // re-use it many times per display() call to get multiple of that shape to appear in the scene.
+                     };
+      this.submit_shapes( context, shapes );
+                                                                      // Define the global camera and projection matrices.  
+                                                                      // Arguments to perspective() are field of view, aspect ratio, near plane and far plane.
+      Object.assign( context.globals.graphics_state, { camera_transform: Mat4.translation([ 0,-30,-120 ]), projection_transform: Mat4.perspective( Math.PI/4, context.width/context.height, .1, 1000 ) } );
+      
+      Object.assign( this, { hover: false, t: 0,                  // Define a couple of data members of a Butterfly_Scene.
+                             yellow: context.get_instance( Phong_Model ).material( Color.of( .8, .8, .3,  1 ), .2, 1, .7, 40 ),  // Call material() on the Phong_Shader,
+                             brown:  context.get_instance( Phong_Model ).material( Color.of( .3, .3, .1,  1 ), .2, 1,  1, 40 ),  // which returns a special-made "material" 
+                             red:    context.get_instance( Phong_Model ).material( Color.of(  1,  0,  0, .9 ), .1, .7, 1, 40 ),  // (a JavaScript object)
+                             green:  context.get_instance( Phong_Model ).material( Color.of(  0, .5,  0,  1 ), .1, .7, 1, 40 ),
+                             blue:   context.get_instance( Phong_Model ).material( Color.of(  0,  0,  1, .8 ), .1, .7, 1, 40 ),
+                             silver: context.get_instance( Phong_Model ).material( Color.of( .8, .8, .8,  1 ),  0,  1, 1, 40 ), 
+                             fire: context.get_instance( Funny_Shader ).material(),
+                             blueGlass    : context.get_instance( Phong_Model  ).material( Color.of( .5,.5, 1,.2 ), .4, .8, .4, 40 ),
+                             purplePlastic: context.get_instance( Phong_Model  ).material( Color.of( .9,.5,.9, 1 ), .4, .4, .8, 40 ),
+                             stars        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,1,1 ), .5, .5, .5, 40, context.get_instance( "assets/stars.png" )  ),
+                             greyPlastic  : context.get_instance( Phong_Model  ).material( Color.of( .5,.5,.5, 1 ), .4, .8, .4, 20 ),
+                              black: context.get_instance( Phong_Model).material(Color.of(0, 0, 0,  1 ),  0,  .1, 1, 40)});
+    }
+  make_control_panel()                                                              // Draw the buttons, setup their actions and keyboard shortcuts, and monitor live variables.
+    { const globals = this.globals;
+      this.live_string( () => { return "Butterfly rotation angle: " + ( this.hover ? 0 : ( this.t % (2*Math.PI)).toFixed(2) ) + " radians" } );  this.new_line();
+      this.key_triggered_button( "Hover in place", "h", function() { this.hover ^= 1; } ); this.new_line();      
+    }  
+
+
+  draw_arm( graphics_state, model_transform )
+    { const arm = model_transform.times( Mat4.translation([ 0,0,3+1 ]) );
+      this.shapes.ball.draw( graphics_state, arm, this.blue );
+    }
+  
+  init_butterfly(butterfly_size, height)
+    {
+      let model_matrix = Mat4.identity();
+      let range = 20;
+      model_matrix = model_matrix.times(Mat4.translation(Vec.of(0, height, 0)));
+      let model_butterfly = model_matrix;
+      if(!this.hover) model_butterfly = model_matrix.times(Mat4.rotation(this.t, Vec.of(0, 1, 0)));
+      model_butterfly = model_butterfly.times(Mat4.translation(Vec.of(-range, 0, 0)));
+      //model_butterfly = model_butterfly.times(Mat4.translation(Vec.of(0, 5*Math.sin(-4*this.t), 0)));
+      //model_butterfly = model_butterfly.times(Mat4.rotation(Math.sin(4*this.t)/4, Vec.of(1, 0, 0)));
+      
+      model_butterfly = model_butterfly.times(Mat4.rotation(-Math.PI/12, Vec.of(1, 0, 0)));
+      //model_butterfly = model_butterfly.times(Mat4.scale([butterfly_size, butterfly_size/4, butterfly_size/4]));
+      
+      //model_matrix = model_matrix.times(Mat4.translation(Vec.of(0, height, 0)));
+
+      return model_butterfly;
+    }
+  
+  
+  draw_body(graphics_state, butterfly_center, butterfly_size)
+    {
+      
+      //model_matrix = model_matrix.times(Mat4.rotation(Math.PI/4, Vec.of(0, 0, 1)));
+      
+      let body_center = butterfly_center.times(Mat4.scale([butterfly_size/4, butterfly_size/4, butterfly_size]));
+      this.shapes.box.draw(graphics_state, body_center, this.blueGlass);
+      
+
+      let tail_center = body_center;
+      let head_center = body_center;
+
+      //this.shapes.ball.draw(graphics_state, model_matrix.times(Mat4.scale(Vec.of(1, 4, 4))), this.blue);
+      
+      tail_center = tail_center.times(Mat4.scale(Vec.of(0.5, 0.5, 0.5)));
+      tail_center = tail_center.times(Mat4.translation(Vec.of(0, 0, -butterfly_size/2)));
+
+      this.shapes.ball.draw(graphics_state, tail_center, this.blueGlass);
+
+      
+      
+      head_center = head_center.times(Mat4.scale(Vec.of(2, 2, .5)));  // 6*0.5 = 6/4*2 = 3
+      head_center = head_center.times(Mat4.translation(Vec.of(0, 0, butterfly_size/2))); 
+
+      this.shapes.ball.draw(graphics_state, head_center, this.red);
+
+    }
+
+    draw_wing(graphics_state, butterfly_center, butterfly_size, isLeft)
+    {
+      //this.shapes.ball.draw(graphics_state, butterfly_center, this.green);
+      let wing_thick = .3;
+      //wing_center = wing_center.times(Mat4.rotation(-Math.sin(5*this.t)/4, Vec.of(1, 0, 0)));
+      let wing_front_center = butterfly_center.times(Mat4.rotation(isLeft * 1/2*Math.sin(4*this.t), Vec.of(0, 0, 1)));
+       wing_front_center = wing_front_center.times(Mat4.translation(Vec.of(isLeft * butterfly_size, wing_thick, 0)));
+      let side = butterfly_size / Math.sqrt(2);
+      
+      //wing_front_center = wing_front_center.times(Mat4.rotation(Math.sin(this.t), Vec.of(0, 0, 1)));
+
+      wing_front_center = wing_front_center.times(Mat4.rotation(Math.PI/4, Vec.of(0, 1, 0)));
+      wing_front_center = wing_front_center.times(Mat4.scale(Vec.of(side, wing_thick, side)));
+      this.shapes.box.draw(graphics_state, wing_front_center, this.fire);
+
+      let wing_back_center = butterfly_center.times(Mat4.rotation(isLeft * 1/2*Math.sin(4*this.t), Vec.of(0, 0, 1)));
+      wing_back_center = wing_back_center.times(Mat4.translation(Vec.of(isLeft * butterfly_size, wing_thick, -2*butterfly_size)));;
+      wing_back_center = wing_back_center.times(Mat4.rotation(Math.PI/4, Vec.of(0, 1, 0)));
+      wing_back_center = wing_back_center.times(Mat4.scale(Vec.of(side, wing_thick, side)));
+      this.shapes.box.draw(graphics_state, wing_back_center, this.fire);
+      
+
+    }
+    draw_leg(graphics_state, butterfly_center, butterfly_size, isLeft)
+    {
+      let leg_up_center = butterfly_center.times(Mat4.rotation(-1/10 * isLeft * Math.sin(5 * this.t+Math.PI/4) - isLeft*Math.PI/15, Vec.of(0, 0, 1)));
+      let leg_size = butterfly_size/32;
+      leg_up_center = leg_up_center.times(Mat4.translation([isLeft*leg_size, -4*leg_size, leg_size]));
+      //this.shapes.ball.draw(graphics_state, butterfly_center, this.green);
+      let leg_down_center = leg_up_center.times(Mat4.translation([-1 * isLeft * leg_size, -4*leg_size, leg_size])); //-leg_size
+      leg_up_center = leg_up_center.times(Mat4.scale([leg_size, 4*leg_size, leg_size]));
+      this.shapes.box.draw(graphics_state, leg_up_center, this.silver);
+      
+      //leg_down_center = leg_up_center.times(Mat4.translation([-leg_size, -4*leg_size, leg_size]));
+     
+      leg_down_center = leg_down_center.times(Mat4.rotation(-1/11 * isLeft * Math.sin(5*this.t)-isLeft*Math.PI/15, Vec.of(0, 0, 1)));
+      leg_down_center = leg_down_center.times(Mat4.translation([isLeft*leg_size, -4*leg_size, -leg_size])); //leg_size
+      leg_down_center = leg_down_center.times(Mat4.scale([leg_size, 4*leg_size, leg_size]));
+      this.shapes.box.draw(graphics_state, leg_down_center, this.fire);
+      
+
+    }
+    draw_legs(graphics_state, butterfly_center, butterfly_size, isLeft)
+    {
+      let legs_center = butterfly_center;
+      for(let i of [1, 2, 3])
+      {
+        this.draw_leg(graphics_state, legs_center, butterfly_size, isLeft); 
+        legs_center = legs_center.times(Mat4.translation([0, 0, -butterfly_size*1/2])); 
+      }
+      
+
+    }
+    draw_antenna(graphics_state, butterfly_center, butterfly_size, isLeft)
+    {
+      let antenna_size = .3;
+     
+      let antenna_center = butterfly_center.times(Mat4.translation([0, antenna_size, 0]));
+      let current_antenna_center = antenna_center;
+      antenna_center = antenna_center.times(Mat4.scale([antenna_size/2, antenna_size, antenna_size/2]));
+      this.shapes.box.draw(graphics_state, antenna_center, this.silver);
+      let top = Mat4.identity();
+      for(let i = 0; i < 8; ++i)
+      {
+        current_antenna_center = current_antenna_center.times(Mat4.translation([isLeft*antenna_size/2, antenna_size, antenna_size/2]));
+        //current_antenna_center = current_antenna_center.times(Mat4.rotation(-isLeft*Math.PI/12, Vec.of(0, 0, 1)));
+        current_antenna_center = current_antenna_center.times(Mat4.rotation(-isLeft/12*Math.sin(4*this.t)-isLeft*Math.PI/11, Vec.of(0, 0, 1)));
+        current_antenna_center = current_antenna_center.times(Mat4.translation([-isLeft*antenna_size/2, antenna_size, -antenna_size/2]));
+
+        top = current_antenna_center;
+        //current_antenna_center = current_antenna_center.times(Mat4.rotation(-Math.PI/6, Vec.of(0, 0, 1)));
+        this.shapes.box.draw(graphics_state, current_antenna_center.times(Mat4.scale([antenna_size/2, antenna_size, antenna_size/2])), this.blueGlass);
+        
+        
+        //current_antenna_center = current_antenna_center.times(Mat4.translation([-antenna_size/2, antenna_size, 0]));
+        
+      }
+      let top_size = .4;
+      top = top.times(Mat4.translation([0, antenna_size+top_size, 0]));
+      top = top.times(Mat4.scale([top_size, top_size, top_size]));
+      this.shapes.ball.draw(graphics_state, top, this.fire);
+    }
+  display( graphics_state )
+    { graphics_state.lights = [ new Light( Vec.of(  30, 30,  34, 1 ), Color.of( 0, .4, 0, 1 ), 100000 ),         // Lights for Phong_Shader to use
+                                new Light( Vec.of( -10, 20, -14, 0 ), Color.of( 1, 1, .3, 1 ), 100    ) ]
+
+                                
+                                
+      /**********************************
+      Start coding down here!!!!
+      **********************************/                                     // From here on down it's just some example shapes drawn 
+                                                                              // for you -- freely replace them with your own!                          
+      /* add by kasin */
+      let butterfly_size = 6;
+      let height = 10;                        
+      this.t = graphics_state.animation_time/1000;
+      let butterfly_center = this.init_butterfly(butterfly_size, height);                          
+
+      this.draw_body(graphics_state, butterfly_center, butterfly_size);
+
+      //
+      
+      let wing_left_center = butterfly_center.times(Mat4.translation(Vec.of(butterfly_size/4, butterfly_size/4, butterfly_size)));
+      this.draw_wing(graphics_state, wing_left_center, butterfly_size, 1);
+      
+      let wing_right_center = butterfly_center.times(Mat4.translation(Vec.of(-butterfly_size/4, butterfly_size/4, butterfly_size)));
+      //this.shapes.ball.draw(graphics_state, butterfly_center, this.green);
+      this.draw_wing(graphics_state, wing_right_center, butterfly_size, -1);
+
+      let leg_left_center = wing_left_center.times(Mat4.translation(Vec.of(0, -butterfly_size/4 * 2, 0)));
+      
+      this.draw_legs(graphics_state, leg_left_center, butterfly_size, 1);
+
+      let leg_right_center = wing_right_center.times(Mat4.translation(Vec.of(0, -butterfly_size/4 * 2, 0)));
+      //this.shapes.ball.draw(graphics_state, leg_right_center, this.brown);
+      this.draw_legs(graphics_state, leg_right_center, butterfly_size, -1);
+      
+      let antenna_left_center = butterfly_center.times(Mat4.rotation(-Math.PI/6, Vec.of(0, 0, 1)));
+      antenna_left_center = antenna_left_center.times(Mat4.translation(Vec.of(0, butterfly_size/2, butterfly_size+butterfly_size/2)));
+      antenna_left_center = antenna_left_center.times(Mat4.rotation(-Math.PI/4, Vec.of(0, 1, 0)));
+      this.draw_antenna(graphics_state, antenna_left_center, butterfly_size, 1);
+
+      let antenna_right_center = butterfly_center.times(Mat4.rotation(Math.PI/6, Vec.of(0, 0, 1)));
+      antenna_right_center = antenna_right_center.times(Mat4.translation(Vec.of(0, butterfly_size/2, butterfly_size+butterfly_size/2)));
+      antenna_right_center = antenna_right_center.times(Mat4.rotation(Math.PI/4, Vec.of(0, 1, 0)));
+      this.draw_antenna(graphics_state, antenna_right_center, butterfly_size, -1);
+
+      let flower_center = butterfly_center.times(Mat4.translation([20, 0, 0]));
+      
+      //this.shapes.ball.draw(graphics_state, flower_center, this.black);
+      //let red_flower = flower_center.times(Mat4.scale([1, 2, 1]));
+      //red_flower = red_flower.times(Mat4.translation([1, 1, 1]));
+      for(let i = 1; i < 15; ++i)
+      {
+        let red_flower = flower_center;
+        
+        
+        red_flower = red_flower.times(Mat4.rotation(i*Math.PI/4, Vec.of(0, 0, 1)));
+        //red_flower = red_flower.times(Mat4.translation([2, 2, 2]));
+        let leaf = red_flower;
+        red_flower = red_flower.times(Mat4.scale([1, 1.5, 1]));
+        this.shapes.ball.draw(graphics_state, red_flower, this.black);
+        leaf = leaf.times(Mat4.scale([.7, 3, .7]));
+        this.shapes.ball.draw(graphics_state, leaf, this.yellow);
+
+      }
+      
+
+      let grass_center = Mat4.identity();
+      grass_center = grass_center.times(Mat4.translation([0, 5, 0]));
+      grass_center = grass_center.times(Mat4.scale([0.5, 5, 0.5]));
+      this.shapes.box.draw(graphics_state, grass_center, this.green);
+
+      
+
+      this.shapes.box.draw( graphics_state, Mat4.scale([ 50,.1,50 ]), this.green );                           // Ground plane.                          
+      
+      /*
+      this.t = graphics_state.animation_time/1000;      
+      let model_transform = Mat4.identity();                // This will be a temporary matrix that helps us draw most shapes.  It starts over as the identity every single frame.
+      
+      model_transform = model_transform.times( Mat4.translation( Vec.of( 0,10,0 ) ) );
+      
+      if( !this.hover ) model_transform = model_transform.times( Mat4.rotation( -this.t, Vec.of( 0,1,0 ) ) );
+      
+      this.shapes.ball.draw( graphics_state, model_transform, this.silver );
+      
+      model_transform = model_transform.times( Mat4.translation( Vec.of( 0,-( 1 + .2 ),0 ) ) );
+      
+      this.shapes.box.draw( graphics_state, model_transform.times( Mat4.scale([ 3,.2,3 ]) ), this.yellow );
+                                                                                    // Each loop iteration, the following will draw the same thing on a different side due to a reflection:
+      for( let side of [-1,1] )                                                     // For each of the two values -1 and 1,
+      { let flipped = model_transform.times( Mat4.scale([ 1,1,side ]) );            // Reflect the coordinate system (or not) depending on the value.
+        this.draw_arm( graphics_state, flipped );                                   // Example of how to call your own function, passing in your matrix.
+      }  
+      */                                                                         
+    }    
+}
+</script>
+<style>
+  table { border-collapse: collapse; display:block; overflow-x: auto; }
+  table, th, td { border: 2px solid black; vertical-align: top; white-space: nowrap }
+  th, td { overflow: hidden;  }
+  button { position: relative; background-color: #4C9F50; color: white; padding: 6px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); transition: background-color .3s, transform .3s }
+  button:hover, button:focus { transform: scale(1.2); color:gold }
+  .dropdown { display:inline-block }
+  .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 100px; overflow: auto; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2) }
+  .dropdown-content a { color: black; padding: 4px 4px; display: block }
+  .dropdown a:hover { background-color: #f1f1f1 }
+  .show { display:inline-block }
+</style>
+</head><body>
+<div id="canvases"></div>
+<table id="control_buttons" class="dropdown" style="display:block; width: 70%;  border: 0px; margin: 0 0 50px 0"><tr></tr></table>
+<div id="code_display" style="font-family: monospace; white-space: pre; margin: 50px 0" ></div>
+<table id="class_list" class="dropdown" style="display:block; border: 0px; border-spacing: 10px " >
+<tr><td colspan=2>Click below to navigate through all classes that are defined. <br>&nbsp;<br>Main demo: <span name="main_demo_link"></span></td></tr>
+<tr style="text-align:center"><td>tinywebgl-ucla.js</td><td>dependencies.js</td></tr><tr></tr></table>
+</body></html>
