@@ -1,0 +1,792 @@
+<!-- Graphics Example Code.  index.html - The web page document containing the canvas (drawing surface), that launches your javascript files.  By Garett //-->
+<!DOCTYPE html> <html> <head> <meta charset="UTF-8"/> <link rel="icon" href="assets/fav.ico">
+<script type="text/javascript" src="tinywebgl-ucla.js" ></script>  <!--  Javascript "include" files.  Any code in them gets executed as part of the page loading. //-->
+<script type="text/javascript" src="dependencies.js"   ></script>
+<script type="text/javascript"> "use strict"    
+  window.onload = function init()        // ********************* THE ENTRY POINT OF THE WHOLE PROGRAM STARTS HERE ********************* 
+    { window.contexts = {};                                                            // A global variable, "contexts".  Browsers support up to 16 WebGL contexts per page.
+      
+      const scenes  = [ "Tutorial_Animation", "Movement_Controls", "Global_Info_Table" ]; // Register some scenes to the "Canvas_Manager" object -- which WebGL calls
+                                                                                       // upon every time a draw / keyboard / mouse event happens.  
+      
+      if( eval( "typeof " + scenes[0] ) !== "undefined" )
+      { document.getElementById( "canvases" ).appendChild( Object.assign( document.createElement( "canvas" ), { id: "main_canvas", width: 800, height: 600 } ) );
+        contexts[ "main_canvas" ] = new Canvas_Manager( "main_canvas", Color.of( 0,0,0,1 ), scenes );   // Manage the WebGL canvas.  Second parameter sets background color.
+        for( let c in contexts ) contexts[ c ].render();     // Call render() for each WebGL context on this page.  Then render() will re-queue itself for more calls.
+        
+        Code_Manager.display_code( eval( scenes[0] ) );                                  // Display the code for our demo on the page, starting with the first scene in the list.
+        for( let list of [ core_dependencies, all_dependencies ] )
+        document.querySelector( "#class_list" ).rows[2].appendChild( Object.assign( document.createElement( "td" ), { 
+          innerHTML: list.reduce( (acc, x) => acc += "<a href='javascript:void(0);' onclick='Code_Manager.display_code(" + x + ")'>" + x + "</a><br>", "" ) } ) );        
+        document.getElementsByName( "main_demo_link" )[0].innerHTML = "<a href='javascript:void(0);' onclick='Code_Manager.display_code(" + scenes[0] + ")'>" + scenes[0] + "</a><br>";
+        document.querySelector("#code_display").innerHTML = "Below is the code for the demo that's running:<br>&nbsp;<br>" + document.querySelector("#code_display").innerHTML;             
+      }
+      
+      document.querySelector("#edit_button").addEventListener('click', () => {
+        code_panel.style.display=class_list.style.display='none'; new_demo_source_code.style.display='block'; 
+        document.getElementsByName( 'new_demo_code' )[0].value=code_display.dataset.displayed.toString() } )
+      const form = document.forms.namedItem("new_demo_source_code");
+      form.addEventListener('submit', function(event) 
+        { if( document.getElementsByName( "finished" )[0].checked )
+            alert( "Your demo will be submitted.  If approved, you will start being asked for a password to make any further updates to it.  This password "
+                 + "will appear right now, below the submit button, and then (assuming submission worked) it will never appear again.  Write it down." );
+          var xhr = new XMLHttpRequest();
+          xhr.open("POST", "/submit-demo?Unapproved", true);
+          xhr.responseType = "json";
+          xhr.onload = function(event) 
+          { if (xhr.status != 200) { document.querySelector("#submit_result").textContent = "Error " + xhr.status + " when trying to upload."; return }
+            document.querySelector("#submit_result").textContent = this.response.message;
+            // if( this.response.hide_finished_checkbox ) { document.getElementsByName( "finished" )[0].checked = false; expert_panel.style.display = "none" }
+            if( this.response.show_password  ) document.getElementsByName( "password" )[0] .style.display = "inline";
+            if( this.response.show_overwrite ) document.querySelector( "#overwrite_panel" ).style.display = "inline";
+          };
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.send( JSON.stringify( Array.from( form.elements ).reduce( ( accum, elem ) => 
+            { if( elem.value && !( ['checkbox', 'radio'].includes(elem.type) && !elem.checked ) ) accum[elem.name] = elem.value; return accum }, {} ) ) );
+          event.preventDefault();
+        }, false);      
+    }
+// patches from TA
+class Grid_Patch extends Shape                          // A deformed grid of rows and columns. A tesselation of triangles connects the points, by generating a certain 
+{  constructor( rows, columns, next_row_function, next_column_function, texture_coord_range = [ [ 0, rows ], [ 0, columns ] ]  )      // predictable pattern of indices.
+    { super();                                                                     // Two callbacks allow you to dynamically define how to reach the next row or column.
+      let points = [];
+      for( let r = 0; r <= rows; r++ ) 
+      { points.push( new Array( columns+1 ) );                                                  // Allocate a 2D array
+        points[ r ][ 0 ] = next_row_function( r/rows, points[ r-1 ] && points[ r-1 ][ 0 ] );    // Use next_row_function to generate the start point of each row.
+      }                                                                                         //   Include the previous point if it existed.      
+      for(   let r = 0; r <= rows;    r++ )
+        for( let c = 0; c <= columns; c++ )
+        { if( c > 0 ) points[r][ c ] = next_column_function( c/columns, points[r][ c-1 ], r/rows );           // From those, use next_column function to generate the remaining points.
+      
+          this.positions.push( points[r][ c ] );        
+          const a1 = c/columns, a2 = r/rows, x_range = texture_coord_range[0], y_range = texture_coord_range[1];
+          this.texture_coords.push( Vec.of( ( a1 )*x_range[1] + ( 1-a1 )*x_range[0], ( a2 )*y_range[1] + ( 1-a2 )*y_range[0] ) );    // Interpolate texture coords from a range.
+        }
+      for(   let r = 0; r <= rows;    r++ )                                                   // Generate normals by averaging the cross products of all defined neighbor pairs.
+        for( let c = 0; c <= columns; c++ )
+        { let curr = points[r][c], neighbors = new Array(4), normal = Vec.of( 0,0,0 );          
+          for( let [ i, dir ] of [ [ -1,0 ], [ 0,1 ], [ 1,0 ], [ 0,-1 ] ].entries() )         // Store each neighbor by rotational order.
+            neighbors[i] = points[ r + dir[1] ] && points[ r + dir[1] ][ c + dir[0] ];        // Leave "undefined" in the array wherever we hit a boundary.
+          
+          for( let i = 0; i < 4; i++ )                                                        // Cross pairs of neighbors, proceeding the same rotational direction through the pairs.
+            if( neighbors[i] && neighbors[ (i+1)%4 ] ) normal = normal.plus( neighbors[i].minus( curr ).cross( neighbors[ (i+1)%4 ].minus( curr ) ) );          
+          normal.normalize();                                                                 // Normalize the sum to get the average vector.
+          
+          if( normal.every( x => x == x ) && normal.norm() > .01 )  this.normals.push( Vec.from( normal ) );    // Store the normal if it's valid (not NaN or zero length)
+          else                                                      this.normals.push( Vec.of( 0,0,1 )    );    // Otherwise use a default.
+        }
+      for( let i = 0; i < this.normals.length; i++ )
+      { if( this.normals[i].norm() > 0 ) break;
+        this.normals[i] = first_valid_normal;
+      }        
+        
+      for( var h = 0; h < rows; h++ )             // Generate a sequence like this (if #columns is 10):  "1 11 0  11 1 12  2 12 1  12 2 13  3 13 2  13 3 14  4 14 3..." 
+        for( var i = 0; i < 2 * columns; i++ )
+          for( var j = 0; j < 3; j++ )
+            this.indices.push( h * ( columns + 1 ) + columns * ( ( i + ( j % 2 ) ) % 2 ) + ( ~~( ( j % 3 ) / 2 ) ? 
+                                   ( ~~( i / 2 ) + 2 * ( i % 2 ) )  :  ( ~~( i / 2 ) + 1 ) ) );
+    }
+  static sample_array( array, ratio )                                           // Optional.  In an array of points, intepolate the pair of points that our progress ratio falls between.
+    { const frac = ratio * ( array.length - 1 ), alpha = frac - Math.floor( frac );
+      return array[ Math.floor( frac ) ].mix( array[ Math.ceil( frac ) ], alpha );
+    }
+}
+  
+class Surface_Of_Revolution extends Grid_Patch
+  // SURFACE OF REVOLUTION: Produce a curved "sheet" of triangles with rows and columns.  Begin with an input array of points, defining a 1D path curving through 3D space -- 
+  // now let each point be a row.  Sweep that whole curve around the Z axis in equal steps, stopping and storing new points along the way; let each step be a column.  Now we
+  // have a flexible "generalized cylinder" spanning an area until total_curvature_angle.  
+{ constructor( rows, columns, points, texture_coord_range, total_curvature_angle = 2*Math.PI )
+    { super( rows, columns, i => Grid_Patch.sample_array( points, i ), (j,p) => Mat4.rotation( total_curvature_angle/columns, Vec.of( 0,0,1 ) ).times(p.to4(1)).to3(), texture_coord_range );
+    }
+}    
+  
+class Regular_2D_Polygon extends Surface_Of_Revolution  // Approximates a flat disk / circle
+  { constructor( rows, columns ) { super( rows, columns, [ ...Vec.cast( [0, 0, 0], [1, 0, 0] ) ] ); 
+                                   this.normals = this.normals.map( x => Vec.of( 0,0,1 ) );
+                                   this.texture_coords.forEach( (x, i, a) => a[i] = this.positions[i].map( x => x/2 + .5 ).slice(0,2) ); } }
+  
+class Cylindrical_Tube extends Surface_Of_Revolution    // An open tube shape with equally sized sections, pointing down Z locally.    
+  { constructor( rows, columns, texture_range ) { super( rows, columns, [ ...Vec.cast( [1, 0, .5], [1, 0, -.5] ) ], texture_range ); } }
+
+class Cone_Tip extends Surface_Of_Revolution            // Note:  Curves that touch the Z axis degenerate from squares into triangles as they sweep around
+  { constructor( rows, columns, texture_range ) { super( rows, columns, [ ...Vec.cast( [0, 0, 1],  [1, 0, -1]  ) ], texture_range ); } }
+
+class Torus extends Shape
+  { constructor( rows, columns, texture_range )  
+      { super();      
+        let circle_points = Array( rows ).fill( Vec.of( .5,0,0 ) );   
+        circle_points = circle_points.map( (x,i,a) => Mat4.rotation( i/(a.length-1) * 2*Math.PI, Vec.of( 0,-1,0 ) ).times( x.to4(1) ).to3() );
+        circle_points = circle_points.map( (x,i,a) => Mat4.translation([ -.75,0,0 ]).times( x.to4(1) ).to3() );
+      
+        Surface_Of_Revolution.prototype.insert_transformed_copy_into( this, [ rows, columns, circle_points, texture_range ] );         
+      } }
+      
+class Grid_Sphere extends Shape           // With lattitude / longitude divisions; this means singularities are at 
+  { constructor( rows, columns, texture_range )             // the mesh's top and bottom.  Subdivision_Sphere is a better alternative.
+      { super();            
+        let semi_circle_points = Array( rows ).fill( Vec.of( 0,0,1 ) );
+        semi_circle_points = semi_circle_points.map( (x,i,a) => Mat4.rotation( i/(a.length-1) * Math.PI, Vec.of( 0,1,0 ) ).times( x.to4(1) ).to3() );
+        
+        Surface_Of_Revolution.prototype.insert_transformed_copy_into( this, [ rows, columns, semi_circle_points, texture_range ] );     
+      } }
+      
+class Closed_Cone extends Shape     // Combine a cone tip and a regular polygon to make a closed cone.
+  { constructor( rows, columns, texture_range ) 
+      { super();
+        Cone_Tip          .prototype.insert_transformed_copy_into( this, [ rows, columns, texture_range ]);    
+        Regular_2D_Polygon.prototype.insert_transformed_copy_into( this, [ 1, columns ], Mat4.rotation( Math.PI, Vec.of(0, 1, 0) ).times( Mat4.translation([ 0, 0, 1 ]) ) ); } }
+
+class Rounded_Closed_Cone extends Surface_Of_Revolution   // An alternative without two separate sections
+  { constructor( rows, columns, texture_range ) { super( rows, columns, [ ...Vec.cast( [0, 0, 1], [1, 0, -1], [0, 0, -1] ) ], texture_range ) ; } }
+
+class Capped_Cylinder extends Shape   // Combine a tube and two regular polygons to make a closed cylinder.  Flat shade this to make a prism, where #columns = #sides.
+  { constructor( rows, columns, texture_range )
+      { super();
+        Cylindrical_Tube  .prototype.insert_transformed_copy_into( this, [ rows, columns, texture_range ] );
+        Regular_2D_Polygon.prototype.insert_transformed_copy_into( this, [ 1, columns ],                                             Mat4.translation([ 0, 0, .5 ]) );
+        Regular_2D_Polygon.prototype.insert_transformed_copy_into( this, [ 1, columns ], Mat4.rotation( Math.PI, Vec.of(0, 1, 0) ).times( Mat4.translation([ 0, 0, .5 ]) ) ); } }
+  
+class Rounded_Capped_Cylinder extends Surface_Of_Revolution   // An alternative without three separate sections
+  { constructor ( rows, columns, texture_range ) { super( rows, columns, [ ...Vec.cast( [0, 0, .5], [1, 0, .5], [1, 0, -.5], [0, 0, -.5] ) ], texture_range ); } } 
+  
+class Axis_Arrows extends Shape   // An axis set made out of a lot of various primitives.
+{ constructor()
+    { super();
+      var stack = [];       
+      Subdivision_Sphere.prototype.insert_transformed_copy_into( this, [ 3 ], Mat4.rotation( Math.PI/2, Vec.of( 0,1,0 ) ).times( Mat4.scale([ .25, .25, .25 ]) ) );
+      this.drawOneAxis( Mat4.identity(),                                                            [[  0 ,.33 ], [ 0,1 ]] );
+      this.drawOneAxis( Mat4.rotation(-Math.PI/2, Vec.of(1,0,0)).times( Mat4.scale([  1, -1, 1 ])), [[ .34,.66 ], [ 0,1 ]] );
+      this.drawOneAxis( Mat4.rotation( Math.PI/2, Vec.of(0,1,0)).times( Mat4.scale([ -1,  1, 1 ])), [[ .67, 1  ], [ 0,1 ]] ); 
+    }
+  drawOneAxis( transform, tex )    // Use a different texture coordinate range for each of the three axes, so they show up differently.
+    { Closed_Cone     .prototype.insert_transformed_copy_into( this, [ 4, 10, tex ], transform.times( Mat4.translation([   0,   0,  2 ]) ).times( Mat4.scale([ .25, .25, .25 ]) ), 0 );
+      Cube            .prototype.insert_transformed_copy_into( this, [ ],            transform.times( Mat4.translation([ .95, .95, .45]) ).times( Mat4.scale([ .05, .05, .45 ]) ), 0 );
+      Cube            .prototype.insert_transformed_copy_into( this, [ ],            transform.times( Mat4.translation([ .95,   0, .5 ]) ).times( Mat4.scale([ .05, .05, .4  ]) ), 0 );
+      Cube            .prototype.insert_transformed_copy_into( this, [ ],            transform.times( Mat4.translation([   0, .95, .5 ]) ).times( Mat4.scale([ .05, .05, .4  ]) ), 0 );
+      Cylindrical_Tube.prototype.insert_transformed_copy_into( this, [ 7, 7,  tex ], transform.times( Mat4.translation([   0,   0,  1 ]) ).times( Mat4.scale([  .1,  .1,  2  ]) ), 0 );
+    }
+}
+
+class Fake_Bump_Map extends Phong_Model  // Overrides Phong_Model except for one thing                  
+{ fragment_glsl_code()           // ********* FRAGMENT SHADER *********
+    { return `
+        uniform sampler2D texture;          //  Like real bump mapping, but with no separate file for the bump map (instead we'll
+        void main()                         //  re-use the colors of the original picture file to disturb the normal vectors)
+        {
+          if( GOURAUD || COLOR_NORMALS )    // Bypass Smooth "Phong" shading if, as in Gouraud case, we already have final colors to smear (interpolate) across vertices.
+          {
+            gl_FragColor = VERTEX_COLOR;
+            return;
+          }                                 // Calculate Smooth "Phong" Shading (not to be confused with the Phong Reflection Model).  As opposed to Gouraud Shading.
+          vec4 tex_color = texture2D( texture, f_tex_coord );                         // Use texturing as well
+          vec3 bumped_N  = normalize( N + tex_color.rgb - .5*vec3(1,1,1) );           // Slightly disturb normals based on sampling the same texture
+          gl_FragColor      = tex_color * ( USE_TEXTURE ? ambient : 0.0 ) + vec4( shapeColor.xyz * ambient, USE_TEXTURE ? shapeColor.w * tex_color.w : shapeColor.w ) ;
+          gl_FragColor.xyz += phong_model_lights( bumped_N );
+        }`;
+    }
+}
+
+// Below is the demo you will see when you run the program!    
+class Shape_From_File extends Shape          // A versatile standalone shape that imports all its arrays' data from an
+{ constructor( filename )                    // .obj file.  Adapted from the open-source "webgl-obj-loader.js".
+    { super();                    // Begin downloading the mesh, and once it completes return control to our parse_into_mesh function:
+      new Object_From_File( filename, this.parse_into_mesh.bind(this) );     
+    }
+  draw( graphics_state, model_transform, material ) { if( this.ready ) super.draw( graphics_state, model_transform, material );   }
+  parse_into_mesh( data )
+    { var verts = [], vertNormals = [], textures = [], unpacked = {};
+
+      unpacked.verts = [];    unpacked.norms = [];    unpacked.textures = [];   unpacked.hashindices = {};    unpacked.indices = [];  unpacked.index = 0;
+
+      var lines = data.split('\n');
+
+      var VERTEX_RE = /^v\s/;    var NORMAL_RE = /^vn\s/;    var TEXTURE_RE = /^vt\s/;    var FACE_RE = /^f\s/;    var WHITESPACE_RE = /\s+/;
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        var elements = line.split(WHITESPACE_RE);
+        elements.shift();
+
+        if      (VERTEX_RE.test(line))   verts.push.apply(verts, elements);
+        else if (NORMAL_RE.test(line))   vertNormals.push.apply(vertNormals, elements);
+        else if (TEXTURE_RE.test(line))  textures.push.apply(textures, elements);
+        else if (FACE_RE.test(line)) {
+          var quad = false;
+          for (var j = 0, eleLen = elements.length; j < eleLen; j++)
+          {
+              if(j === 3 && !quad) {  j = 2;  quad = true;  }
+              if(elements[j] in unpacked.hashindices) 
+                  unpacked.indices.push(unpacked.hashindices[elements[j]]);
+              else
+              {
+                  var vertex = elements[ j ].split( '/' );
+
+                  unpacked.verts.push(+verts[(vertex[0] - 1) * 3 + 0]);   unpacked.verts.push(+verts[(vertex[0] - 1) * 3 + 1]);   
+                  unpacked.verts.push(+verts[(vertex[0] - 1) * 3 + 2]);
+                  
+                  if (textures.length) 
+                    {   unpacked.textures.push(+textures[( (vertex[1] - 1)||vertex[0]) * 2 + 0]);
+                        unpacked.textures.push(+textures[( (vertex[1] - 1)||vertex[0]) * 2 + 1]);  }
+                  
+                  unpacked.norms.push(+vertNormals[( (vertex[2] - 1)||vertex[0]) * 3 + 0]);   unpacked.norms.push(+vertNormals[( (vertex[2] - 1)||vertex[0]) * 3 + 1]);
+                  unpacked.norms.push(+vertNormals[( (vertex[2] - 1)||vertex[0]) * 3 + 2]);
+                  
+                  unpacked.hashindices[elements[j]] = unpacked.index;
+                  unpacked.indices.push(unpacked.index);
+                  unpacked.index += 1;
+              }
+              if(j === 3 && quad)   unpacked.indices.push( unpacked.hashindices[elements[0]]);
+          }
+        }
+      }
+      for( var j = 0; j < unpacked.verts.length/3; j++ )
+      {
+        this.positions     .push( Vec.of( unpacked.verts[ 3*j ], unpacked.verts[ 3*j + 1 ], unpacked.verts[ 3*j + 2 ] ) );        
+        this.normals       .push( Vec.of( unpacked.norms[ 3*j ], unpacked.norms[ 3*j + 1 ], unpacked.norms[ 3*j + 2 ] ) );
+        this.texture_coords.push( Vec.of( unpacked.textures[ 2*j ], unpacked.textures[ 2*j + 1 ]  ));
+      }
+      this.indices = unpacked.indices;
+      this.normalize_positions();
+      this.copy_onto_graphics_card( this.gl );
+      this.ready = true;
+    }   
+}
+
+
+
+class Tutorial_Animation extends Scene_Component  // An example of a Scene_Component that our class Canvas_Manager can manage.  Like most, this one draws 3D shapes.
+{ constructor( context )
+    { super( context );
+
+      var shapes = { 'triangle'        : new Triangle(),                            // At the beginning of our program, instantiate all shapes we plan to use,
+                     'strip'           : new Square(),                              // each with only one instance in the graphics card's memory.
+                     'bad_tetrahedron' : new Tetrahedron( false ),                  // For example we would only create one "cube" blueprint in the GPU, but then 
+                     'tetrahedron'     : new Tetrahedron( true ),                   // re-use it many times per call to display to get multiple cubes in the scene.
+                     'windmill'        : new Windmill( 10 ),
+                     'cube'            : new Cube(),
+                     'ball'            : new Subdivision_Sphere(4),
+                     'mountain'        : new mountain(),
+                     'cone'        : new Closed_Cone       ( 4, 20, [[0,1],[0,1]] ),                       // Cone.  Useful.
+                     "pichu": new Shape_From_File("/assets/pichu.obj"),
+                     'open_cone'   : new Cone_Tip          (  3, 10, [[0,1],[0,1]] ),
+                     "snorlax": new Shape_From_File("/assets/snorlax.obj"),
+                     "poli": new Shape_From_File("/assets/poli.obj"),
+                     "ray": new Shape_From_File("/assets/ray.obj"),
+                     "togetic": new Shape_From_File("/assets/togetic.obj"),
+                     "mew": new Shape_From_File("/assets/mew/Mew.obj"),
+                     "Marill": new Shape_From_File("assets/Marill/marill.obj"),
+                     "mag": new Shape_From_File("assets/mag.obj"),
+                     "teapot": new Shape_From_File( "/assets/teapot.obj" )  };
+      this.submit_shapes( context, shapes );
+      
+       // Place the camera, which is stored in a scratchpad for globals.  Secondly, setup the projection:  The matrix that determines how depth is treated.  It projects 3D points onto a plane.
+      Object.assign( context.globals.graphics_state, { camera_transform: Mat4.translation([ 5, -10,-250 ]), projection_transform: Mat4.perspective( Math.PI/4, context.width/context.height, .1, 1000 ) } );
+      //@1
+      Object.assign( this, { globals: context.globals, time_accumulator: 0, time_scale: 1/2000, t: 0, dt: 1/500, N: 20  } ); 
+      
+      // *** Materials: *** Declare new ones as temps when needed; they're just cheap wrappers for some numbers.  1st parameter:  Color (4 floats in RGBA format),
+      // 2nd: Ambient light, 3rd: Diffuse reflectivity, 4th: Specular reflectivity, 5th: Smoothness exponent, 6th: Optional texture object, leave off for un-textured.
+      Object.assign( this, { purplePlastic: context.get_instance( Phong_Model  ).material( Color.of( .9,.5,.9, 1 ), .4, .4, .8, 40 ),
+                             greyPlastic  : context.get_instance( Phong_Model  ).material( Color.of( .5,.5,.5, 1 ), .4, .8, .4, 20 ),   // Smaller exponent means 
+                             blueGlass    : context.get_instance( Phong_Model  ).material( Color.of( .5,.5, 1,.2 ), .4, .8, .4, 40 ),   // a bigger shiny spot.
+                             fire         : context.get_instance( Funny_Shader ).material(),
+                             orange: context.get_instance( Phong_Model ).material( Color.of( 1, .3, .3,  1 ), .2, 1, .7, 40 ),
+                             yellow: context.get_instance( Phong_Model ).material( Color.of( .8, .8, .3,  1 ), .2, 1, .7, 40 ),  // Call material() on the Phong_Shader,
+                             //brown:  context.get_instance( Phong_Model ).material( Color.of( .3, .3, .1,  1 ), .2, 1,  1, 40 ),  // which returns a special-made "material" 
+                             brown:  context.get_instance( Phong_Model ).material( Color.of( .5, .3, .1,  1 ), .2, 1,  1, 40 ),
+                             red:    context.get_instance( Phong_Model ).material( Color.of(  1,  0,  0, .9 ), .1, .7, 1, 40 ),  // (a JavaScript object)
+                             green:  context.get_instance( Phong_Model ).material( Color.of(  0, .5,  0,  1 ), .1, .7, 1, 40 ),
+                             blue:   context.get_instance( Phong_Model ).material( Color.of(  0,  0,  1, .8 ), .1, .7, 1, 40 ),
+                             black:   context.get_instance( Phong_Model ).material( Color.of(  0,  0,  0, 1 ), .1, .7, 1, 40 ),
+                             stars        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,1,1 ), .5, .5, .5, 40, context.get_instance( "assets/stars.png" ) ), 
+                             space        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/space.jpeg" ) ),
+                             earth        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/earth.gif" ) ),
+                             Diglett        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/Diglett.png" ) ),
+                             babyblue        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/babyblue.png" ) ),
+                             sky        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/sky.jpg" ) ),
+                             grass        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/grass2.png" ) ),
+                             mag        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/mag.png" ) ),
+                             togetic        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/togetic.png" ) ),
+                             poli        : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/poli.png" ) ),
+                             pichu : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .1, 40, context.get_instance( "assets/PM_Pichu12500.png" ) ),
+                            
+                             snorlax   : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/snorlax.png" ) ),
+                             mountain   : context.get_instance( Fake_Bump_Map  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/mountain.png" ) ),
+                             lava   : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/lava.jpg" ) ),
+                             lake   : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/lake.jpg" ) ),
+                             rock   : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/mountain.gif" ) ),
+                             Marill   : context.get_instance( Phong_Model  ).material( Color.of( 0,0,0,0 ), 1, 1, .5, 40, context.get_instance( "assets/Marill/PM_Maril16870.png" ) ),
+                             pika        : context.get_instance( Fake_Bump_Map  ).material( Color.of( 0,0,1,1 ), .5, .5, .5, 40, context.get_instance( "assets/stars.png" ) )} );                             
+    }
+  //@2
+    simulate( frame_time )                                              // Carefully advance time according to Glenn Fielder's "Fix Your Timestep" blog post. 
+    { frame_time = this.time_scale * frame_time;                      // This line lets us create the illusion to the simulator that the display framerate is running fast or slow.
+      this.time_accumulator += Math.min( frame_time, 0.1 ) ;          // Avoid the spiral of death; limit the amount of time we will spend computing during this timestep if display lags.
+      while ( Math.abs( this.time_accumulator ) >= this.dt )          // Repeatedly step the simulation until we're caught up with this frame.
+      { //this.advance( this.dt );                         // Single step of the simulation for all bodies.
+        
+        this.t                += Math.sign( frame_time ) * this.dt;   // Following the advice of the article, de-couple our simulation time from our frame rate.
+        this.time_accumulator -= Math.sign( frame_time ) * this.dt;
+      }     
+      this.alpha = this.time_accumulator / this.dt;                   // Store an interpolation factor for how close our frame fell in between the two latest simulation time steps, so
+    }
+
+
+
+  display( graphics_state )
+    { var model_transform = Mat4.identity();             // We begin with a brand new model_transform every frame.
+      
+      // *** Lights: *** Values of vector or point lights over time.  Two different lights *per shape* supported by Phong_Shader; more requires changing a number in the vertex 
+      graphics_state.lights = [ new Light( Vec.of(  30,  30,  34, 1 ), Color.of( 0, .4, 0, 1 ), 100000 ),      // shader.  Arguments to construct a Light(): Light source position
+                                new Light( Vec.of( -10, -20, -14, 0 ), Color.of( 1, 1, .3, 1 ), 100    ) ];    // or vector (homogeneous coordinates), color, and size.  
+      
+      if( this.globals.animate ) this.simulate( graphics_state.animation_delta_time+this.dt );
+      //var t = graphics_state.animation_time/1000,   tilt_spin   = Mat4.rotation( 12*t, Vec.of(          .1,          .8,             .1 ) ),
+      //                                              funny_orbit = Mat4.rotation(  2*t, Vec.of( Math.cos(t), Math.sin(t), .7*Math.cos(t) ) );
+      //background
+      var size = 70;
+      var n = 4;
+      var grass_size = size-20;
+      this.shapes.ball.draw(graphics_state, model_transform.times(Mat4.scale([n*size, n*size, n*size])), this.space);
+      this.shapes.ball.draw(graphics_state, model_transform.times(Mat4.scale([size+1, size+1, size+1])), this.earth);
+      this.shapes.ball.draw(graphics_state, model_transform.times(Mat4.scale([size, size, size])), this.sky);
+      model_transform.post_multiply( Mat4.translation([ 0, -1, 0 ]) );
+      this.shapes.ball.draw(graphics_state, model_transform.times(Mat4.scale([size, .1, size])), this.grass);
+      var lake_pos = Mat4.identity().times(Mat4.translation([30, 0, 30]));
+      this.shapes.cube.draw(graphics_state, lake_pos.times(Mat4.scale([size/5, .3, size/5])), this.lake);
+      this.shapes.cube.draw(graphics_state, lake_pos.times(Mat4.scale([size/4, .2, size/4])), this.greyPlastic);
+
+      var mountain_pos = model_transform.times(Mat4.translation([27, 0, -30]));
+      this.shapes.mountain.draw(graphics_state, mountain_pos.times(Mat4.scale([5, 5, 5])), this.mountain);
+      var lava_pos = mountain_pos.times(Mat4.translation([0, 5.1, 0]));
+      var hot_lava_pos = lava_pos.times(Mat4.translation([0, 2.1, 0]));
+      lava_pos.post_multiply(Mat4.rotation(Math.PI/2, Vec.of(1, 0, 0))); 
+      hot_lava_pos.post_multiply(Mat4.rotation(Math.PI/2, Vec.of(1, 0, 0)));
+      this.shapes.cone.draw(graphics_state, lava_pos.times(Mat4.scale([5, 5, 5])), this.rock);
+
+      this.shapes.cone.draw(graphics_state, hot_lava_pos.times(Mat4.scale([3, 3, 3])), this.lava);
+      //character
+      var spaceTime = 5000;
+      var spaceBegin = 2000;
+
+      var cameraTime = 5000;
+      var cameraBegin = 7000;
+
+      var vacanoTime = 5000;
+      var vacanoBegin = 16000;
+
+      var cameraTime2 = 4000;
+      var cameraBegin2 = 17000;
+
+      var flyTime = 8000;
+      var flyBegin = 23000;
+
+      var spaceT = graphics_state.animation_time - spaceBegin; // start 2 seconds after program starts, play for 5 seconds
+
+
+      var cameraT = graphics_state.animation_time - cameraBegin; // Start the scene 7 seconds in, play for 4 second 
+      var vacanoT = graphics_state.animation_time - vacanoBegin; // starts after 11 seconds, scene: 4 seconds
+      var cameraT2 = graphics_state.animation_time - cameraBegin2;
+      var flyT = graphics_state.animation_time - flyBegin;
+
+      
+      var lava_liquid = mountain_pos;
+      var mag_pos = lava_liquid;
+      
+      if(-22+7*vacanoT/1000 > 1 && vacanoT <= vacanoTime)
+      {
+         lava_liquid = mountain_pos.times(Mat4.translation([0, -22+7*vacanoT/1000, 0]));
+         mag_pos = lava_liquid.times(Mat4.translation([0, 10, 0]));
+         lava_liquid.post_multiply(Mat4.scale([3, 8, 3]));
+
+         lava_liquid.post_multiply(Mat4.rotation(Math.PI/2, Vec.of(1, 0, 0)));
+         this.shapes.cone.draw(graphics_state, lava_liquid, this.lava);
+         this.shapes.mag.draw(graphics_state, mag_pos.times(Mat4.scale([2, 2, 2])), this.mag);
+         
+      }
+
+      if(graphics_state.animation_time > vacanoBegin+vacanoTime)
+      {
+        lava_liquid = mountain_pos.times(Mat4.translation([0, -22+7*vacanoTime/1000, 0]));
+        mag_pos = lava_liquid.times(Mat4.translation([0, 10, 0]));
+        lava_liquid.post_multiply(Mat4.scale([3, 8, 3]));
+        lava_liquid.post_multiply(Mat4.rotation(Math.PI/2, Vec.of(1, 0, 0)));
+        this.shapes.cone.draw(graphics_state, lava_liquid, this.lava);
+        this.shapes.mag.draw(graphics_state, mag_pos.times(Mat4.scale([2, 2, 2])), this.mag);
+        var delta_time = 2000;
+        if(graphics_state.animation_time > vacanoBegin + vacanoTime + delta_time)
+        {
+          var fire_pos = mag_pos;
+          fire_pos.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+          if(graphics_state.animation_time < vacanoBegin + vacanoTime + 4*delta_time)
+          {
+            fire_pos.post_multiply(Mat4.translation([0, 0, 135-12*(this.t)]));
+            this.shapes.cone.draw(graphics_state, fire_pos.times(Mat4.scale([.8, .8, 2])), this.lava);
+          }
+          
+        }
+
+      }
+      
+      model_transform.post_multiply( Mat4.translation([ 0, 1.25, 0 ]) );
+      var snorlax_pos = model_transform.times(Mat4.translation([-10, 1.9, -30]));
+      snorlax_pos.post_multiply(Mat4.scale([10, 10, 10]));
+      this.shapes.snorlax       .draw( graphics_state, snorlax_pos.times(Mat4.rotation(Math.PI/4, Vec.of(0, 1, 0))), this.snorlax );
+
+      //var togetic_pos = model_transform.times(Mat4.translation([-10, 10, -10]));
+      //this.shapes.togetic.draw(graphics_state, togetic_pos, this.togetic);
+      //var poli_pos = togetic_pos.times(Mat4.translation([0, 5, 0]));
+      //this.shapes.poli.draw(graphics_state, poli_pos, this.poli);
+      
+      // playground
+      //model_transform.post_multiply( ) );
+      var circle_pos = model_transform.times(Mat4.rotation(this.t, Vec.of(0, 1, 0)));
+      circle_pos.post_multiply(Mat4.translation([ 8, -1, 6+ 6 * Math.sin(5*this.t) ]));
+      circle_pos.post_multiply(Mat4.rotation(1.5*this.t, Vec.of(0, 1, 0)));
+      this.shapes.ball.draw(graphics_state, circle_pos.times(Mat4.scale([1.5, .3, 1.5])), this.grass);
+      this.shapes.ball.draw(graphics_state, circle_pos.times(Mat4.scale([1, 2, 1])), this.brown);
+      var nose_pos = circle_pos.times(Mat4.translation([0, .5, .8]));
+      this.shapes.ball.draw(graphics_state, nose_pos.times(Mat4.scale([.5, .2, .2])), this.orange);
+      var eye_left_pos = circle_pos.times(Mat4.translation([-.2, .8, .7]));
+      this.shapes.ball.draw(graphics_state, eye_left_pos.times(Mat4.scale([.2, .5, .2])), this.black);
+      var eye_right_pos = circle_pos.times(Mat4.translation([.2, .8, .7]));
+      this.shapes.ball.draw(graphics_state, eye_right_pos.times(Mat4.scale([.2, .5, .2])), this.black);
+      //this.shapes.Diglett.draw(graphics_state, model_transform, this.Diglett);
+      //model_transform.post_multiply( Mat4.translation([ 0, 3, 0 ]) );
+
+      circle_pos = circle_pos.times(Mat4.translation([0, 3, 0]));
+      circle_pos.post_multiply(Mat4.rotation(-Math.PI/2, Vec.of(1, 0, 0)));
+      var play1 = circle_pos.times(Mat4.rotation(0.2 * Math.sin(5*this.t), Vec.of(1, 0, 0)));
+      //play1.post_multiply());
+      //var play1 = circle_pos.times(Mat4.translation([0, 2, 0]).times(Mat4.rotation(-Math.PI/2, Vec.of(1, 0, 0))));
+      this.shapes.cone.draw(graphics_state, play1, this.red);
+      //model_transform.post_multiply( Mat4.translation([ 5, 0, 0 ]) );
+      play1.post_multiply(Mat4.rotation(Math.PI/2, Vec.of(1, 0, 0)));
+      //play1.post_multiply(Mat4.translation([0, 1, 0]));
+      play1.post_multiply( Mat4.translation([ 0, 1.1, 0 ]) );
+
+      var play2 = play1.times(Mat4.rotation(0.2*Math.sin(5*this.t), Vec.of(0, 0, 1)));
+
+
+      var seat = play2.times(Mat4.translation([4.5, .2, 0]));
+      seat = seat.times(Mat4.scale([.5, .1, 1]));
+      this.shapes.cube.draw(graphics_state, seat, this.red);
+      seat = seat.times(Mat4.translation([-18, 0, 0]));
+      this.shapes.cube.draw(graphics_state, seat, this.red);
+
+      var pichu_pos = play2.times(Mat4.translation([-4.5, 1.45, 0]));
+      //if(Math.sin(this.t) > .5)
+      {
+        //pichu_pos = pichu_pos.times(Mat4.translation([0, 2, 0]));
+        
+      }
+      var Marill_pos = play2.times(Mat4.translation([4.5, 1.2, 0]));
+      pichu_pos.post_multiply(Mat4.rotation(Math.PI/2, Vec.of(0, 1, 0)));
+      Marill_pos.post_multiply(Mat4.rotation(-Math.PI/2, Vec.of(0, 1, 0)));
+      //pichu_pos.post_multiply(Mat4.translation([0, -1, 0]));
+      //var pichu_pos_move = pichu_pos.times(Mat4.rotation(0.5*Math.sin(5*this.t), Vec.of(1, 0, 0)));
+      //pichu_pos.post_multiply(Mat4.translation([0, 1, 0]));
+      this.shapes.pichu       .draw( graphics_state, pichu_pos, this.pichu);
+      this.shapes.Marill      .draw(graphics_state, Marill_pos, this.Marill);
+      play2 = play2.times( Mat4.scale([5, .1, 1]));
+      this.shapes.cube.draw(graphics_state, play2, this.yellow);
+
+      var comet_pos = Mat4.identity();
+
+      var mew_pos = comet_pos;
+      mew_pos = mew_pos.times(Mat4.translation([-50, 10 - Math.sin(15*this.t), 200]));
+      mew_pos.post_multiply(Mat4.rotation(Math.PI/3, Vec.of(0, 1, 0)));
+      comet_pos = comet_pos.times(Mat4.translation([20, 10, 220]));
+      comet_pos = comet_pos.times(Mat4.rotation(-Math.PI/2, Vec.of(0, 1, 0)));  
+      //comet_pos = comet_pos.times(Mat4.translation([0, 1, 0]));
+
+      //this.shapes.mew.draw(graphics_state, mew_pos, this.black);
+      if(spaceT > spaceTime)
+      {
+        spaceT = -1;
+      }
+      if(spaceT > 0 && spaceT < spaceTime/3)
+      {
+        comet_pos.post_multiply(Mat4.translation([spaceT/2000, -3, 60*spaceT/2000]));
+
+        this.shapes.ray.draw(graphics_state, comet_pos.times(Mat4.scale([5, 5, 5])), this.black);
+      }
+      if(spaceT > spaceTime/3)
+      {
+        //mew_pos = mew_pos.times(Mat4.rotation(0.2*Math.sin(spaceT*.005), Vec.of(0, 0, 1)));
+        //mew_pos = mew_pos.times(Mat4.rotation( Math.sin(spaceT/200), Vec.of(0, 1, 0)));
+        mew_pos = mew_pos.times(Mat4.translation([0, 0, 30*spaceT/2000]));
+        this.shapes.mew.draw(graphics_state, mew_pos, this.black);
+      }
+
+      if(graphics_state.animation_time > 0)
+      {
+        var poli_pos = lake_pos.times(Mat4.translation([0, Math.sin(2*this.t)+1, 0]));
+        poli_pos.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos1 = lake_pos.times(Mat4.translation([-6, Math.sin(4*this.t)+1, 0]));
+        poli_pos1.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos1.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos2 = lake_pos.times(Mat4.translation([6, Math.sin(1*this.t)+1, 0]));
+        poli_pos2.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos2.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos3 = lake_pos.times(Mat4.translation([0, Math.sin(2*this.t)+1, -10]));
+        poli_pos3.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos3.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos4 = lake_pos.times(Mat4.translation([-6, Math.sin(4*this.t)+1, -10]));
+        poli_pos4.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos4.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos5 = lake_pos.times(Mat4.translation([6, Math.sin(1*this.t)+1, -10]));
+        poli_pos5.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos5.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos6 = lake_pos.times(Mat4.translation([0, Math.sin(2*this.t)+1, 10]));
+        poli_pos6.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos6.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos7 = lake_pos.times(Mat4.translation([-6, Math.sin(4*this.t)+1, 10]));
+        poli_pos7.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos7.times(Mat4.scale([2, 2, 2])), this.poli);
+
+        var poli_pos8 = lake_pos.times(Mat4.translation([6, Math.sin(1*this.t)+1, 10]));
+        poli_pos8.post_multiply(Mat4.rotation(Math.PI, Vec.of(0, 1, 0)));
+        this.shapes.poli.draw(graphics_state, poli_pos8.times(Mat4.scale([2, 2, 2])), this.poli);
+      }
+
+      if(cameraT > cameraTime)
+      {
+        cameraT = -1;
+      }
+      
+      var looker1 = Mat4.identity();
+      
+      if(cameraT > 0 && cameraT <= cameraTime)
+      {
+        
+        var eye = Vec.of(5, 10, 240-100*(cameraT)/2500);
+        var at = Vec.of(5, 10, 0);
+        //var at = Vec.of(20, 10, -15);
+        var up = Vec.of(0, 1, 0);
+        looker1 = Mat4.look_at(eye, at, up);
+        //var interpolatedVector = Vec.of(0,-10,-240).mix( Vec.of(0,-10,-40), cameraTime);
+        //var looker = Mat4.look_at(interpolatedVector,Vec.of(0,0,0),Vec.of(0,1,0));
+        graphics_state.camera_transform = looker1;
+ //       looker1 = graphics_state.camera_transform;
+        //graphics_state.camera_transform = Mat4.translation([0, -10, -240 + 100*cameraT/2500]);
+      }
+
+      
+      if(cameraT2 > 0 && cameraT2 <= cameraTime2)
+      {
+        var eye = Vec.of(5 + cameraT2/1000, 10, -(cameraT2)/1000);
+        var at = Vec.of(27, 15, -30);
+        var up = Vec.of(0, 1, 0);
+        var looker = Mat4.look_at(eye, at, up);
+        graphics_state.camera_transform = looker;
+
+      }
+
+
+
+      var togetic_pos = Mat4.identity().times(Mat4.rotation(5000 - .4 *(this.t), Vec.of(0, 1, 0)));
+      togetic_pos.post_multiply(Mat4.translation([0, 15, -30]));
+      
+      if(flyT > 0 && flyT <= flyTime)
+      {
+        this.shapes.togetic.draw(graphics_state, togetic_pos.times(Mat4.rotation(Math.PI/6, Vec.of(0, 1, 0))), this.togetic);
+      }
+
+/*
+      if(flyT > flyTime)
+      {
+        var angle = 5000 + .4 *(this.t);
+        togetic_pos = Mat4.identity().times(Mat4.rotation(-angle, Vec.of(0, 1, 0)));
+        togetic_pos.post_multiply(Mat4.translation([0, 15, -30]));
+        this.shapes.togetic.draw(graphics_state, togetic_pos.times(Mat4.rotation(Math.PI/6, Vec.of(0, 1, 0))), this.togetic);
+        var camera_angle = (angle );
+        var eye = Vec.of(35*Math.cos(camera_angle), 15, 35 * Math.sin(camera_angle));
+        var at = Vec.of(30*Math.cos(angle), 15, 30 * Math.sin(angle));
+        var up = Vec.of(0, 1, 0);
+        var looker = Mat4.look_at(eye, at, up);
+        graphics_state.camera_transform = looker;
+      }
+*/
+
+      
+      var rate = 1.3;
+      var deltaHeight = 30-rate*(this.t);
+      var deltaBreath = 35-rate*(this.t);
+      var h = .4;
+      if(flyT > flyTime && deltaHeight >= h )
+      {
+        togetic_pos = Mat4.identity();
+        togetic_pos.post_multiply(Mat4.translation([deltaBreath, deltaHeight , 7+this.t]));
+        this.shapes.togetic.draw(graphics_state, togetic_pos.times(Mat4.rotation(Math.PI*7/6, Vec.of(0, 1, 0))), this.togetic);
+
+        var eye = Vec.of(deltaBreath, deltaHeight, -7+1*this.t);
+        var at = Vec.of(deltaBreath, deltaHeight, 7+1*this.t);
+        var up = Vec.of(0, 1, 0);
+        var looker = Mat4.look_at(eye, at, up);
+        graphics_state.camera_transform = looker;
+      }
+      
+      if(deltaHeight < h)
+      {
+        var large_t = (30-h)/rate;
+        var new_breath = 35 - rate * large_t;
+
+        togetic_pos = Mat4.identity();
+        togetic_pos.post_multiply(Mat4.translation([new_breath, h , 7+large_t]));
+        //for(var i = 0; i < 10; i = i + 1)
+        this.shapes.togetic.draw(graphics_state, togetic_pos.times(Mat4.rotation(Math.PI*7/6, Vec.of(0, 1, 0))), this.togetic);
+
+
+
+    //    graphics_state.camera_transform = Mat4.translation([ 0, -10,0 ]);
+      }
+
+    }
+}
+
+
+// add by TA
+/*
+  
+class Surfaces_Demo extends Scene_Component
+{ constructor( context )
+    { super( context );
+      let square_array = Vec.cast( [ 1,0,-1 ], [ 0,1,-1 ], [ -1,0,-1 ], [ 0,-1,-1 ], [ 1,0,-1 ] ),               // Some helper arrays of points located along
+            star_array = Array(19).fill( Vec.of( 1,0,-1 ) ), circle_array = Array(40).fill( Vec.of( 1,0,-1 ) );  // curves.  We'll extrude these into surfaces.
+      circle_array = circle_array.map( (x,i,a) => Mat4.rotation( i/(a.length-1) * 2*Math.PI, Vec.of( 0,0,1 ) ).times( x.to4(1) ).to3() );
+      star_array   =   star_array.map( (x,i,a) => Mat4.rotation( i/(a.length-1) * 2*Math.PI, Vec.of( 0,0,1 ) ).times( Mat4.translation([ (i%2)/2,0,0 ]) ).times( x.to4(1) ).to3() );
+      
+      let sin_rows_func       =      i  => { return Vec.of( .5 + Math.sin(777*i)/4, 2-4*i, 0 ) },                                   // Different callbacks for telling Grid_Patch 
+          sin_columns_func    = ( j,p ) => { return Mat4.translation([ Math.sin(777*j)/4,0,4/30    ]).times( p.to4(1) ).to3() },    // how it chould advance to the next row/column.  
+          rotate_columns_func = ( j,p ) => { return Mat4.rotation( .1*j*Math.PI, Vec.of( 0,1,0 )    ).times( p.to4(1) ).to3() },
+          sample_square_func  =      i  => { return Grid_Patch.sample_array( square_array, i ) },
+          sample_star_func    =      i  => { return Grid_Patch.sample_array( star_array,   i ) },
+          sample_circle_func  =      i  => { return Grid_Patch.sample_array( circle_array, i ) },          
+          sample_two_arrays   = (j,p,i) => { return Mat4.translation([0,0,2*j]).times( sample_star_func(i).mix( sample_circle_func(i), j ).to4(1) ).to3() },
+          sample_two_arrays2  = (j,p,i) => { return Mat4.rotation( .5*j*Math.PI, Vec.of( 1,1,1 ) ).times( 
+                                                    Mat4.translation([0,0,2*j]).times( sample_star_func(i).mix( sample_square_func(i), j ).to4(1) ) ).to3() },
+          line_rows_func      = ( i,p ) => { return p ? Mat4.translation([0,i/50,0]).times( p.to4(1) ).to3() :  Vec.of( .01,-.05,-.1 ) },
+          transform_cols_func = (j,p,i) => { return Mat4.rotation( Math.PI/8, Vec.of( 0,0,1 ) ).times( Mat4.scale([ 1.1,1.1,1.1 ])).times( Mat4.translation([ 0,0,.005 ]))
+                                                      .times( p.to4(1) ).to3() };
+      var shapes = { good_sphere : new Subdivision_Sphere( 4 ),                                           // A sphere made of nearly equilateral triangles / no singularities
+                     vase        : new Grid_Patch( 30, 30, sin_rows_func, rotate_columns_func,   [[0,1],[0,1]] ),
+                     box         : new Cube(),
+                     ghost       : new Grid_Patch( 36, 10, sample_star_func, sample_two_arrays,  [[0,1],[0,1]] ),
+                     shell       : new Grid_Patch( 10, 40, line_rows_func, transform_cols_func,  [[0,5],[0,1]] ),
+                     waves       : new Grid_Patch( 30, 30, sin_rows_func, sin_columns_func,      [[0,1],[0,1]] ),
+                     shell2      : new Grid_Patch( 30, 30, sample_star_func, sample_two_arrays2, [[0,1],[0,1]] ),
+                     tube        : new Cylindrical_Tube  ( 10, 10, [[0,1],[0,1]] ),
+                     open_cone   : new Cone_Tip          (  3, 10, [[0,1],[0,1]] ),
+                     donut       : new Torus             ( 15, 15 ),
+                     gem2        : new ( Torus             .prototype.make_flat_shaded_version() )( 20, 20 ),
+                     bad_sphere  : new Grid_Sphere       ( 10, 10 ),                                            // A sphere made of rows and columns, with singularities
+                     septagon    : new Regular_2D_Polygon(  2,  7 ),
+                     cone        : new Closed_Cone       ( 4, 20, [[0,1],[0,1]] ),                       // Cone.  Useful.
+                     capped      : new Capped_Cylinder   ( 4, 12, [[0,1],[0,1]] ),                       // Cylinder.  Also useful.
+                     axis        : new Axis_Arrows(),                                                    // Axis.  Draw them often to check your current basis.
+                     prism       : new ( Capped_Cylinder   .prototype.make_flat_shaded_version() )( 10, 10, [[0,1],[0,1]] ),
+                     gem         : new ( Subdivision_Sphere.prototype.make_flat_shaded_version() )(  2     ),
+                     swept_curve : new Surface_Of_Revolution( 10, 10, [ ...Vec.cast( [2, 0, -1], [1, 0, 0], [1, 0, 1], [0, 0, 2] ) ], [ [ 0, 1 ], [ 0, 7 ] ], Math.PI/3 ),
+                   };
+      this.submit_shapes( context, shapes );
+      Object.assign( context.globals.graphics_state, { camera_transform: Mat4.translation([ -2,2,-15 ]), projection_transform: Mat4.perspective( Math.PI/4, context.width/context.height, .1, 1000 ) } );
+      Object.assign( this, { shader: context.get_instance( Fake_Bump_Map ), textures: [], gallery: false, patch_only: false, revolution_only: false } );
+      for( let filename of [ "/assets/rgb.jpg", "/assets/stars.png", "/assets/earth.gif", "/assets/text.png" ] ) this.textures.push( context.get_instance( filename ) ); this.textures.push( undefined );
+    }
+  display( graphics_state )
+    { let model_transform = Mat4.identity(), t = graphics_state.animation_time / 1000;
+      graphics_state.lights = [ new Light( Vec.of( 1,1,0, 0 ).normalized(), Color.of(  1, .5, .5, 1 ), 100000000 ),
+                                new Light( Vec.of( 0,1,0, 0 ).normalized(), Color.of( .5,  1, .5, 1 ), 100000000 ) ];
+                                  
+      for( var i = 0; i < 5; i++ )           // Draw some moving worm-like sequences of shapes.  Keep the matrix state from the previous one to draw the next one attached at the end.                                
+      { let j = i;
+        for( let key in this.shapes )
+        { j++;
+          if( this.patch_only      &&    this.shapes[ key ].constructor.name != "Grid_Patch"   ) continue;    // Filter some shapes out when those buttons have been pressed.
+          if( this.revolution_only && !( this.shapes[ key ] instanceof Surface_Of_Revolution ) ) continue;
+          
+          let funny_function_of_time = t/5 + j*j*Math.cos( t/10 )/50,
+                     random_material = this.shader.material( Color.of( (j % 6)/10, (j % 5)/10, (j % 4)/10, 1 ), .4, 1, 1, 40, this.textures[0] )
+              
+          model_transform.post_multiply( Mat4.rotation( funny_function_of_time, Vec.of(j%3 == 0, j%3 == 1, j%3 == 2) ) );   // Irregular motion
+          if( this.gallery ) model_transform.pre_multiply ( Mat4.translation([ 3, 0,0 ]) );   // Gallery mode:  Switch the rotation/translation order to line up the shapes.
+          else               model_transform.post_multiply( Mat4.translation([ 0,-3,0 ]) );
+          this.shapes[ key ].draw( graphics_state, model_transform, random_material );        //  Draw the current shape in the list    
+        }
+        model_transform.post_multiply( Mat4.rotation( .5, Vec.of(0, 0, 1) ) );
+      }      
+    }
+  make_control_panel()   // This function of a scene sets up its keyboard shortcuts.
+    { this.key_triggered_button( "Next Texture",                   "t", function() { this.textures.push( this.textures.shift() )    },  "red" ); this.new_line();
+      this.key_triggered_button( "Gallery View",                   "g", function() { this.gallery ^= 1;                             }, "blue" ); this.new_line();
+      this.key_triggered_button( "Revolution Surfaces Only", "shift+S", function() { this.revolution_only = 1; this.patch_only = 0; }         ); this.new_line();
+      this.key_triggered_button( "Custom Patches Only",      "shift+C", function() { this.revolution_only = 0; this.patch_only = 1; }         ); this.new_line();
+      this.key_triggered_button( "All Shapes",               "shift+A", function() { this.revolution_only = 0; this.patch_only = 0; }         );
+    }
+  show_explanation( document_element )
+    { document_element.innerHTML += "Welcome to the Surfaces Demo!  This is a demonstration of how to make a diverse set of shapes using the least amount of code. <br>"
+                                 +  "Use the movement controls below to explore the scene.  You may find it easier to do this in gallery mode, entered by pressing "
+                                 +  "g or the blue button below.  Press t to cycle through the loaded texture images.<br>"
+                                 +  "A cone and cylinder are among the simplest and most useful new shapes.  Also available is a set of axis arrows that can be drawn anytime "
+                                 +  "that you want to check where and how long your current coordinate axes are.  Draw it in a neutral color with the \"rgb.jpg\" "
+                                 +  "texture image and the axes will become identifiable by color - XYZ maps to red, green, blue.<br>"
+                                 +  "Most of these shapes are made using tiny code due to the help of two classes:  Grid_Patch and Surface_Of_Revolution (a special case "
+                                 +  "of Grid_Patch).  Grid_Patch works by generating a tesselation of triangles arranged in rows and columns, and produes a deformed grid "
+                                 +  "by doing user-defined steps to reach the next row or column. <br>"
+                                 +  "All of these shapes are generated as a single vertex array each.  Building them that way, even with shapes like the axis arrows that "
+                                 +  "are compounded together out of many shapes, speeds up your graphics program considerably.";
+    } 
+}*/
+
+</script>
+<style>
+  table { border-collapse: collapse; display:block; overflow-x: auto; }
+  table, th, td { border: 2px solid black; vertical-align: top; white-space: nowrap }
+  th, td { overflow: hidden;  }
+  button { position: relative; background-color: #4C9F50; color: white; padding: 6px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); transition: background-color .3s, transform .3s }
+  button:hover, button:focus { transform: scale(1.2); color:gold }
+  .dropdown { display:inline-block }
+  .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 100px; overflow: auto; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2) }
+  .dropdown-content a { color: black; padding: 4px 4px; display: block }
+  .dropdown a:hover { background-color: #f1f1f1 }
+  .show { display:inline-block }
+</style>
+</head><body>
+<div id="explanation_section"></div>
+<div id="canvases"></div>
+<table id="control_buttons" class="dropdown" style="display:block; width: 70%;  border: 0px; margin: 0 0 50px 0"><tr></tr></table>
+<div id="code_panel" style="font-family: monospace; white-space: pre; margin: 50px 0" >
+  <div id="code_display"  data-displayed="" ></div>
+  <button id="edit_button" style="display:none">Start editing</button> 
+  <table id="class_list" class="dropdown" style="display:block; border: 0px; border-spacing: 10px " >
+    <tr><td colspan="2">Click below to navigate through all classes that are defined. <br>&nbsp;<br>Main demo: <span name="main_demo_link"></span></td></tr>
+    <tr style="text-align:center"><td>tinywebgl-ucla.js</td><td>dependencies.js</td></tr><tr></tr></table>
+</div>
+<form name="new_demo_source_code" style="display:none">  
+  <p style="margin: 50px 0"><i><b>What can I put here?</b></i>  A JavaScript class, with any valid JavaScript inside.  Your code can use classes from this demo, or from ANY demo on the 
+  encyclopedia of code --  the dependencies will automatically be pulled in to run your demo!<br></p>
+  <textarea rows="30" cols="140" name="new_demo_code"></textarea><br>
+  <div id="submit_result" style="margin: 10px 0"></div>
+  <button type="submit" style="margin: 0px 50px 0px 0px">Save as new webpage</button> 
+  <input type="text" name="author"   placeholder="Author name">
+  <input type="text" name="password" placeholder="Password" style="display:none">
+  <span id="overwrite_panel" style="display:none"><label>Overwrite?<input type="checkbox" name="overwrite" autocomplete="off"></label></span>
+  <span id="beginner_panel"><label>Beginner Mode<input type="checkbox" checked onchange="document.querySelector('#expert_panel').style.display='block'; beginner_panel.style.display='none'"></label></span>
+  <div id="expert_panel" style="display:none;"><label><input type="checkbox" name="finished" autocomplete="off">
+    Optional:  This demo is finished; consider it for public listing on the main page.  
+    I believe that this demo is the one true way to minimalistically do what its name says.
+    The code's readability and structure are so good as to maximize how easy it is to memorize it.
+    </label></div>  
+</form>
+</body></html>

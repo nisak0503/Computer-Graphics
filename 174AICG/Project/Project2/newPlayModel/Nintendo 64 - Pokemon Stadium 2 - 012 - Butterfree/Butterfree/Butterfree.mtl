@@ -1,0 +1,234 @@
+# Blender MTL File: 'Blastoise Fix.blend'
+# Material Count: 20
+newmtl Material.009_2CFE4215_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\2CFE4215_c.png
+
+
+newmtl Material.009_4A440F9_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\4A440F9_c.png
+
+
+newmtl Material.009_59FB7949_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\59FB7949_c.png
+
+
+newmtl Material.009_619C477F_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\619C477F_c.png
+
+
+newmtl Material.009_7596767C_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\D07E41E_c.png
+
+
+newmtl Material.009_D07E41E_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\7596767C_c.png
+
+
+newmtl Material.020_2A0380_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\2A0380_c.png
+
+
+newmtl Material.021_2A0380_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd Textures\\2A0380_c.png
+
+
+newmtl Material.022_4240E9BC_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\4240E9BC_a.png
+map_Kd Textures\\4240E9BC_c.png
+
+
+newmtl Material.023_FA4AB72_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\FA4AB72_a.png
+map_Kd Textures\\FA4AB72_c.png
+
+
+newmtl Material.024_1EC5AED7_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\1EC5AED7_a.png
+map_Kd Textures\\1EC5AED7_c.png
+
+
+newmtl Material.025_88A7C61_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\88A7C61_a.png
+map_Kd Textures\\88A7C61_c.png
+
+
+newmtl Material.026_23BA1F_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\23BA1F_a.png
+map_Kd Textures\\23BA1F_c.png
+
+
+newmtl Material.027_543A6FCC_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\543A6FCC_a.png
+map_Kd Textures\\543A6FCC_c.png
+
+
+newmtl Material.028_4240E9BC_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\4240E9BC_a.png
+map_Kd Textures\\4240E9BC_c.png
+
+
+newmtl Material.029_FA4AB72_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\FA4AB72_a.png
+map_Kd Textures\\FA4AB72_c.png
+
+
+newmtl Material.030_1EC5AED7_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\1EC5AED7_a.png
+map_Kd Textures\\1EC5AED7_c.png
+
+
+newmtl Material.031_88A7C61_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\88A7C61_a.png
+map_Kd Textures\\88A7C61_c.png
+
+
+newmtl Material.032_23BA1F_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\23BA1F_a.png
+map_Kd Textures\\23BA1F_c.png
+
+
+newmtl Material.033_543A6FCC_c.bmp
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_d Textures\\543A6FCC_a.png
+map_Kd Textures\\543A6FCC_c.png
+
+

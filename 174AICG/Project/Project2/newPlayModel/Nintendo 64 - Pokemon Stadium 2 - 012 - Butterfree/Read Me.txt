@@ -1,0 +1,11 @@
+There is no:
+Skeleton (Armature)
+Some textures (Example eye closed)
+
+There is:
+Model
+Textures
+UV
+
+Ripped by: EAFG
+No credit need.

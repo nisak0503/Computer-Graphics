@@ -1,0 +1,1 @@
+The "VolgeromMagma01.png" file was probably meant to be previewed in the volcano's eruption.  However, it was included along with the model and "VolgeromVolceno01", texture used for the volcano.

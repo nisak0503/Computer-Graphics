@@ -1,0 +1,11 @@
+# Material file for politoed.obj
+
+newmtl 48_0_50_85
+	Ns 10
+	d 1
+	illum 2
+	Kd 0.588 0.588 0.588
+	Ks 0.0 0.0 0.0
+	Ka 0.588 0.588 0.588
+	map_Kd PM_Nyorotono12885.png
+

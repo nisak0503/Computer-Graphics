@@ -1,0 +1,23 @@
+# Created by Every File Explorer
+
+newmtl S013_all
+Ka 1 1 1
+Kd 1 1 1
+Ks 1 1 1
+d 1
+map_Kd Tex/roomitems_013_color.png
+
+newmtl all_alpha
+Ka 1 1 1
+Kd 1 1 1
+Ks 1 1 1
+d 1
+map_Kd Tex/roomitems_013_alpha.png
+
+newmtl test_lambert302
+Ka 1 1 1
+Kd 1 1 1
+Ks 1 1 1
+d 1
+map_Kd Tex/roomitem_s_kage.png
+
